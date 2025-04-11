@@ -13,7 +13,6 @@ def add_client(df, save_function):
         diagnosis = st.text_area("Diagnosis")
 
         submitted = st.form_submit_button("Add Client")
-
         if submitted:
             new_client = {
                 "Client ID": df["Client ID"].max() + 1 if not df.empty else 1,
@@ -30,6 +29,4 @@ def add_client(df, save_function):
     return df
 
 def save_data_to_github(df, filename):
-    # This function is just a placeholder.
-    # In actual use, you’d push the CSV to a GitHub repo using PyGitHub or GitHub API.
-    df.to_csv(filename, index=False)
+    df.to_csv(filename, index=False)  # Simple local save fallback
