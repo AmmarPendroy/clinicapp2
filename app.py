@@ -1,47 +1,132 @@
 import streamlit as st
 import pandas as pd
+from sidebar import sidebar_navigation
+from client import add_client, save_data_to_github
+from contact import show_contact_info
+from style import apply_custom_style
+from datetime import datetime
 
-# Sample client data (you can replace this with your actual data source)
-data = {
-    'Client ID': [101, 102, 103, 104],
-    'Name': ['Alice Johnson', 'Bob Smith', 'Charlie Lee', 'Diana Patel'],
-    'Age': [34, 45, 29, 54],
-    'Gender': ['Female', 'Male', 'Male', 'Female'],
-    'Last Visit': ['2024-12-01', '2025-01-15', '2025-03-10', '2025-04-01'],
-    'Diagnosis': ['Flu', 'Diabetes', 'Check-up', 'Hypertension']
-}
+# Set page configuration (must be the first Streamlit command)
+st.set_page_config(
+    page_title="Clinic Dashboard",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-df = pd.DataFrame(data)
+# Apply custom styles
+apply_custom_style()
 
-# Streamlit UI
-st.set_page_config(page_title="Clinic Client Dashboard", layout="centered")
+# Access key for securing the app
+ACCESS_KEY = "clinic2024"
 
-st.title("🏥 Clinic Client Dashboard")
-st.write("Welcome to the clinic dashboard. View and filter client records easily.")
+def login():
+    """Display login prompt and validate access key."""
+    st.title("🔒 Secure Clinic Dashboard")
+    st.markdown("""
+    ## Welcome to the Clinic Dashboard!
+    This application is secured. Please enter the access key to proceed.
+    """)
 
-# Filter by name
-search_name = st.text_input("🔍 Search by client name")
+    # Access key input
+    password = st.text_input("Enter Access Key:", type="password")
+    if st.button("Login"):
+        if password == ACCESS_KEY:
+            st.success("Access granted! Redirecting...")
+            st.session_state["authenticated"] = True
+        else:
+            st.error("Invalid access key. Please try again.")
 
-if search_name:
-    filtered_df = df[df['Name'].str.contains(search_name, case=False)]
+def main():
+    # Load data
+    def load_data():
+        try:
+            return pd.read_csv("database.csv")
+        except FileNotFoundError:
+            return pd.DataFrame(columns=["Client ID", "Name", "Age", "Gender", "Last Visit", "Diagnosis"])
+
+    # Save data locally
+    def save_data(df):
+        df.to_csv("database.csv", index=False)
+
+    # Initialize data
+    df = load_data()
+
+    # Sidebar Navigation
+    choice = sidebar_navigation()
+
+    # Main Content
+    if choice == "📊 Client Overview":
+        st.title("Client Overview")
+        st.dataframe(df, use_container_width=True)
+
+        # Filter options
+        st.markdown("### 🔍 Search Filters")
+        with st.expander("Click to filter clients"):
+            # Name Filter
+            name_filter = st.text_input("Search by Name")
+
+            if not df.empty:
+                # Age Range Filter
+                min_age, max_age = st.slider(
+                    "Select Age Range", 
+                    min_value=int(df["Age"].min()), 
+                    max_value=int(df["Age"].max()), 
+                    value=(int(df["Age"].min()), int(df["Age"].max()))
+                )
+
+                # Gender Filter
+                gender_filter = st.multiselect(
+                    "Filter by Gender", 
+                    options=df["Gender"].dropna().unique(), 
+                    default=df["Gender"].dropna().unique()
+                )
+
+                # Last Visit Date Range Filter
+                min_date = datetime.strptime(df["Last Visit"].min(), "%Y-%m-%d").date()
+                max_date = datetime.strptime(df["Last Visit"].max(), "%Y-%m-%d").date()
+                start_date, end_date = st.date_input(
+                    "Select Last Visit Date Range", 
+                    value=(min_date, max_date), 
+                    min_value=min_date, 
+                    max_value=max_date
+                )
+
+                # Apply filters to DataFrame
+                filtered_data = df[
+                    (df["Name"].str.contains(name_filter, case=False, na=False)) &
+                    (df["Age"] >= min_age) & (df["Age"] <= max_age) &
+                    (df["Gender"].isin(gender_filter)) &
+                    (pd.to_datetime(df["Last Visit"]) >= pd.to_datetime(start_date)) &
+                    (pd.to_datetime(df["Last Visit"]) <= pd.to_datetime(end_date))
+                ]
+
+                # Display filtered data
+                st.dataframe(filtered_data, use_container_width=True)
+            else:
+                st.warning("No data available to filter.")
+
+    elif choice == "➕ Add Client":
+        # Update both local and GitHub-stored data
+        df = add_client(df, lambda updated_df: save_data_to_github(updated_df, "database.csv"))
+
+    elif choice == "📞 Contact Info":
+        show_contact_info()
+
+    # Default content if no button is clicked (optional)
+    if not choice:
+        st.title("Welcome to the Clinic Dashboard")
+        st.markdown("""
+        Use the sidebar to navigate between pages:
+        - View and search client data
+        - Add new clients
+        - View contact information
+        """)
+
+# Check authentication status
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
+if not st.session_state["authenticated"]:
+    login()
 else:
-    filtered_df = df
-
-# Show table
-st.dataframe(filtered_df, use_container_width=True)
-
-# Show basic stats
-st.subheader("📊 Client Summary")
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.metric("Total Clients", len(df))
-
-with col2:
-    st.metric("Average Age", round(df["Age"].mean(), 1))
-
-with col3:
-    st.metric("Last Visit Date", df["Last Visit"].max())
-
-st.caption("Simple clinic dashboard - Powered by Streamlit")
-
+    main()
